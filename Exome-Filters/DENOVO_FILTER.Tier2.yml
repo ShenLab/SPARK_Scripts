@@ -1,0 +1,44 @@
+# all values are not filtered if at that value
+
+INFO:
+  exon: true
+  exon_flag:
+  - 'splicing'
+  - 'exonic'
+  - 'exonic,splicing'
+  - 'exonic_splicing'
+  - 'exonic-splicing'
+  max_AC: 6
+  max_ESP: 1
+  max_1KG: 1
+  max_gnomAD: 0.005
+  max_ExAC: 0.005
+  excluded_gene:
+  - MUC
+  - HLA
+  excluded_chrom:
+  - GL
+  #max_seqdup: 0.99
+  min_Mappability: 1
+  #rmsk: true
+
+FILTER:
+
+READS:
+  # proband filter
+  min_proband_AD: 4
+  min_proband_PL: 50
+  min_proband_alt_freq: 0.1 #0.2 # AD < 10
+  # parents filter
+  min_parents_DP: 6
+  min_parents_GQ: 20
+  min_parents_ref_freq: 0.95
+
+SNP:
+  max_FS: 35
+  min_QD: 1
+
+INDEL:
+  max_FS: 35
+  min_QD: 1
+  min_ReadPosRankSum: -3

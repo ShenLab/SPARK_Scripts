@@ -1,0 +1,132 @@
+Exome processing scripts using GATK v3.0. 
+Based on the GATK 2.x pipeline from Badri Vardarajan and GATK 1.7 pipeline from Samreen Zafer
+
+####
+General Notes
+####
+The scripts comprise two pipelines and a group of ad hoc manipulations. There are also two auxilliary files that are required by some of the scripts.
+Each script begins with a block of comments describing the function and use of the script. This includes a list of required tools (e.g. samtools, java etc.) that should be in the users PATH.
+With many of the scripts the input can either be a single file or, if there are multiple files for the script to be run on, a file containing a list of files. In the latter case the script should be called as an array, each instance of the array will then read the appropriate line of the list to get its input file.
+
+####
+Auxilliary files
+####
+There are two auxillary files necessary for most of the scripts. 
+The first auxillary file is the Reference File containing a list of variables that can be exported to the local environment. It is provided by the "-r" argument and fed to the "$RefFil" variable in each script. It provides links to the necessary reference materials and to the necessary jar files for GATK and Picard. This makes it simpler to change locations of these files without having to rewrite every script. The comments for each script contain a list that describes the variables that it requires from the reference file. Multiple versions of this file may be maintained for e.g. using different genome builds or different versions of GATK.
+
+The second auxillary file is called "exome.lib.sh" and is a small library of functions that are used commonly by many of the scripts. Each script calls this file internally. This script should be kept in the same directory as the rest of the scripts. 
+
+####
+Some notes about the structure of the scripts
+####
+
+The scripts begin with a header that describes the function an use of the script.
+The input options are then read and checked for the presence of all required options - exit if anything is missing.
+The scripts then load the two auxillary files (if necessary).
+Various local variables are set prior to main body of the script
+
+The main body of the script, in most cases,broken down into a series of steps. Each step has a name and a command, e.g.:
+
+    #get index stats
+    StepName="Output idx stats using Samtools"
+    StepCmd="samtools idxstats $DdpFil > $IdxStat"
+
+The function "funcRunStep" (located in the exome.lib.sh file) is then called. This functions writes the full command to the log file along with the time. Then the commnad is run. The function checks the exit code once the command has been executed and if it is other than 0 the function writes an error message to the log and exits the script.
+
+If the script is part of a pipeline then the next script in the pipeline will be called if it was requested with the -P flag (see below).
+Finally the script will write log information and clean up any temporary files or directories.
+
+####
+Pipelines
+####
+The two pipelines are:
+    ExmAln - Alignment with BWA mem, local indel realignment with GATK, base quality score recalibration with GATK
+    ExmVC - Variant calling with GATK, variant quality score recalibration with GATK, variant filtering with GATK, variant annotation with annovar
+    
+Both pipelines also emit various QC files and a log file. 
+Each script will call the next in the pipeline if the -P flag is provided. The separate scripts in the each pipeline can be called independently.
+Note that the pipelines will remove all intermediate bam files.
+
+####
+#Passing Target Interval File locations to scripts
+####
+
+Many of the scripts use an exome target intervals file. This is provided by the "-t" argument. The path to the required file can be given explicitly, alternatively, for convenience, a code can be added to the auxillary Reference File with a link to the appropriate bed file, this code can then be used as the argument. 
+    e.g. instead of having to give the full path to the SureSelect_All_Exon_V2 bed file:
+            -t pathtomyresources/SureSelect_All_Exon_V2.b37.ordered.bed
+        the following is added to the reference file:
+            export AgtV2="pathtomyresources/SureSelect_All_Exon_V2.b37.ordered.bed"
+            export TGTCODES="AgtV2"
+    and then the script is called with "-t AgtV2". The script will then compare the -t argument string ("AgtV2") to the $TGTCODES string to see if it is a recognised code, and if so will then obtain the relevant path.
+
+Most scripts will produce a log file detailing activity. In the case of the pipelines these will all be written to single log file.
+
+####
+Brief Summary of files
+####
+
+ExmAdHoc.1.ConcatenateFastq.sh	Concatenates multple gzipped fastq into a single file.
+ExmAdHoc.2.MergeBams.sh	Merges multiple bams into a single bam.
+ExmAdHoc.3.GATKAnnotateVCF.sh	Runs GATK VariantAnnotator on a vcf
+ExmAdHoc.4.TheTeresaMod.sh	Modifies older bam files to remove unwanted extra character as the end of the read name, primarily for use prior to remapping
+ExmAdHoc.5.VCF_PCA.sh	Runs a PCA on variants in a vcf comparison to the HapMap populations
+ExmAln.1a.Align_Fastq_to_Bam_with_BWAmem.sh	Maps fastq data (paired- or single-end) using BWA-mem. Sorts and deduplicates using PICARD. Generates basic stats.
+ExmAln.1b.ReAlign_Bam_with_BWAmem.sh	Remaps a bam file data (paired-end) using BWA-mem. Reversion to FQ done using HTSlib. Sorts and deduplicates using PICARD. Generates basic stats.
+ExmAln.2.AlignSTAMPY.sh	NOT Part of pipeline at the moment.
+ExmAln.3a.Bam_metrics.sh	Generates QC stats on bam files - InsertSize, GCBias, QualityScoreDistribution
+ExmAln.4.LocalRealignment.sh	Runs GATK Local indel realignment on a bam file
+ExmAln.5.GenerateBQSRTable.sh	Generates GATK base quality score recalibration table for a bam file
+ExmAln.6.ApplyRecalibration.sh	Applys GATK BQSR to a bam file
+ExmAln.8a.DepthofCoverage.sh	Runs GATK depth of coverage analysis on a bam file
+ExmFilt.1.FilterbyAlleleFrequency.py	Filters a VCF file by minor/alternate allele frequency in 1KG and ESP-GO
+ExmVC.1.HaplotypeCaller_GVCFmode.sh	Runs GATK Haplotype Caller in genotyping mode on a single bam file
+ExmVC.1ug.UnifiedGenotyper.sh	Runs GATK UnifiedGenotyper on a single or multiple bam files, can be run on subsets of the target intervals to generate split vcfs that can be remerged
+ExmVC.2.GenotypeGVCFs.sh	Runs GATK GenotypeGVCFs jointly across multiple g.vcf files
+ExmVC.2ug.MergeVCF.sh	Merges multiple vcfs into a single vcf, primarily for use after running UnifiedGenotyper on subsets of the target intervals
+ExmVC.3.AnnotateVCF.sh	Annotates a vcf using annovar and snpEff
+ExmVC.4.RecalibrateVariantQuality.sh	Runs GATK VQSR on a vcf
+exome.lib.sh	Library file required by most scripts, contains various common functions. Functions are identified in scripts as commands that begin "func", e.g "funcRunStep"
+README	This file
+table_annovar_cadd.pl	A modified version of the annovar script that has added lines that will output the phred-scaled cadd scores as well as the raw cadd scores
+VCF_summary_Stats.py	Generates summary stats for annotated vcf.
+WES_Pipeline_References.b37.sh	Reference file required by most scripts. Contains paths to resources, jars and other auxillary files.
+
+
+####
+A note regarding the input file for ExmAln.1a.Align_Fastq_to_Bam_with_BWAmem.sh
+####
+
+This script takes paired end or single end fastq files and aligns them BWA mem. The input file is a table that details both the file locations and the readgroup header to be added into the BAM. Details the format for this file are in the script header. The script below, with some modifications according to the precise names of the files, will make this table when run in a directory containing the necessary fastq file:
+
+#!/bin/bash
+# this script is for generating the input table for ExmAln.1a.Align_Fastq_to_Bam_with_BWAmem.sh
+# run it in a directory containging the fastq files to be aligned
+# for use with paired end
+# you will need to modify the bash substistutions lines for identified according to the filenames of your fastq files
+# the current script run in a directory with the file below give the output at the bottom
+#   CDH84_NEW_ACTTGA_AC3WP0ACXX_L003_001.R2.fastq.gz
+#   CDH84_NEW_ACTTGA_AC3WP0ACXX_L003_001.R1.fastq.gz
+#   CDH84_NEW_ACTTGA_AC3WP0ACXX_L001_001.R2.fastq.gz
+#   CDH84_NEW_ACTTGA_AC3WP0ACXX_L001_001.R1.fastq.gz
+#   CDH84_NEW_ACTTGA_AC3WP0ACXX_L002_001.R2.fastq.gz
+#   CDH84_NEW_ACTTGA_AC3WP0ACXX_L002_001.R1.fastq.gz
+
+
+for i in $(find `pwd` | grep R1 | grep fastq); do 
+FIL=$i
+READGROUP=`basename $FIL` #gent
+READGROUP=${READGROUP%_00*}
+LIBRARY=${READGROUP%_L*}
+SAMPLEID=${LIBRARY%%_N*}
+echo $FIL >> TEMPLIST
+echo "@RG\tID:$READGROUP\tSM:$SAMPLEID\tLB:$LIBRARY\tPL:ILLUMINA\tCN:BISRColumbia" >> TEMPLIST
+echo ${FIL/R1/R2} >> TEMPLIST
+done
+cat TEMPLIST | paste - - - > Fastq_for_Align.list
+rm -rf TEMPLIST
+
+
+#Output:
+#/ifs/scratch/c2b2/ys_lab/yshen/WENDY/CDHLan/May2014TrioAnalysis/fastq/CDH84_NEW/CDH84_NEW_ACTTGA_AC3WP0ACXX_L003_001.R1.fastq.gz    @RG\tID:CDH84_NEW_ACTTGA_AC3WP0ACXX_L003\tSM:CDH84\tLB:CDH84_NEW_ACTTGA_AC3WP0ACXX\tPL:ILLUMINA\tCN:BISRColumbia    /ifs/scratch/c2b2/ys_lab/yshen/WENDY/CDHLan/May2014TrioAnalysis/fastq/CDH84_NEW/CDH84_NEW_ACTTGA_AC3WP0ACXX_L003_001.R2.fastq.gz
+#/ifs/scratch/c2b2/ys_lab/yshen/WENDY/CDHLan/May2014TrioAnalysis/fastq/CDH84_NEW/CDH84_NEW_ACTTGA_AC3WP0ACXX_L001_001.R1.fastq.gz    @RG\tID:CDH84_NEW_ACTTGA_AC3WP0ACXX_L001\tSM:CDH84\tLB:CDH84_NEW_ACTTGA_AC3WP0ACXX\tPL:ILLUMINA\tCN:BISRColumbia    /ifs/scratch/c2b2/ys_lab/yshen/WENDY/CDHLan/May2014TrioAnalysis/fastq/CDH84_NEW/CDH84_NEW_ACTTGA_AC3WP0ACXX_L001_001.R2.fastq.gz
+#/ifs/scratch/c2b2/ys_lab/yshen/WENDY/CDHLan/May2014TrioAnalysis/fastq/CDH84_NEW/CDH84_NEW_ACTTGA_AC3WP0ACXX_L002_001.R1.fastq.gz    @RG\tID:CDH84_NEW_ACTTGA_AC3WP0ACXX_L002\tSM:CDH84\tLB:CDH84_NEW_ACTTGA_AC3WP0ACXX\tPL:ILLUMINA\tCN:BISRColumbia    /ifs/scratch/c2b2/ys_lab/yshen/WENDY/CDHLan/May2014TrioAnalysis/fastq/CDH84_NEW/CDH84_NEW_ACTTGA_AC3WP0ACXX_L002_001.R2.fastq.gz
